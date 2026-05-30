@@ -67,21 +67,59 @@ def load_config(path):
     return cfg
 
 
-def collect_samples(reader, duration_sec):
-    samples = []
-    start = time.time()
-    stream = reader.samples()
-    while time.time() - start < duration_sec:
-        samples.append(next(stream))
-    return samples
+def _format_remaining(seconds_left: float) -> str:
+    seconds_left = max(0, int(seconds_left + 0.999))
+    return f"{seconds_left:02d}s"
 
 
 def countdown(message, seconds):
+    """Blocking countdown used before recording starts."""
     print(message)
-    for remain in range(int(seconds), 0, -1):
-        print(f"  {remain} s", end="\r")
-        time.sleep(1)
-    print(" " * 20, end="\r")
+    start = time.monotonic()
+    duration = float(seconds)
+    last_display = None
+
+    while True:
+        elapsed = time.monotonic() - start
+        remaining = duration - elapsed
+        if remaining <= 0:
+            break
+
+        display = _format_remaining(remaining)
+        if display != last_display:
+            print(f"  remaining: {display}", end="\r", flush=True)
+            last_display = display
+        time.sleep(0.05)
+
+    print(" " * 40, end="\r", flush=True)
+    print("  remaining: 00s")
+
+
+def collect_samples(reader, duration_sec, message="Recording"):
+    """Collect serial samples while showing a real-time countdown."""
+    samples = []
+    stream = reader.samples()
+    start = time.monotonic()
+    duration = float(duration_sec)
+    last_display = None
+
+    print(message)
+    while True:
+        elapsed = time.monotonic() - start
+        remaining = duration - elapsed
+        if remaining <= 0:
+            break
+
+        display = _format_remaining(remaining)
+        if display != last_display:
+            print(f"  recording countdown: {display} | samples: {len(samples)}", end="\r", flush=True)
+            last_display = display
+
+        samples.append(next(stream))
+
+    print(" " * 70, end="\r", flush=True)
+    print(f"  recording countdown: 00s | samples: {len(samples)}")
+    return samples
 
 
 def main():
@@ -114,6 +152,9 @@ def main():
     print("EEG-ECG Multimodal Action Dataset Collector")
     print(f"Subject: {args.subject}")
     print(f"Trials per action: {trials_per_action}")
+    print(f"Baseline duration: {baseline_duration:.1f}s")
+    print(f"Action duration: {action_duration:.1f}s")
+    print(f"Rest/prepare duration: {rest_duration:.1f}s")
     print(f"Save directory: {recorder.subject_dir}")
     print(f"Serial port: {source_args.get('port')}")
     print(f"Baudrate: {source_args.get('baudrate')}")
@@ -122,15 +163,22 @@ def main():
         print("Dry-run mode enabled. No serial data will be recorded.")
         for action in actions:
             for trial in range(1, trials_per_action + 1):
+                print("=" * 60)
                 print(f"[DRY RUN] Action {action.action_id:02d}: {action.name}, trial {trial:03d}")
+                countdown(f"Prepare: {action.description}", rest_duration)
+                countdown(f"Simulated recording: {action.name}", action_duration)
         return
 
     reader = Serial12HexReader(**source_args)
 
     try:
         print("Collecting baseline data...")
-        countdown("Please keep relaxed for baseline recording.", 3)
-        baseline_samples = collect_samples(reader, baseline_duration)
+        countdown("Please keep relaxed. Baseline recording will start soon.", 3)
+        baseline_samples = collect_samples(
+            reader,
+            baseline_duration,
+            message="Baseline recording: keep relaxed and still.",
+        )
         baseline_path = recorder.write_trial(0, 0, "baseline_rest", baseline_samples)
         print(f"Baseline saved: {baseline_path}")
 
@@ -143,8 +191,11 @@ def main():
                     f"trial {local_trial}/{trials_per_action}"
                 )
                 countdown(f"Prepare: {action.description}", rest_duration)
-                print("Recording...")
-                samples = collect_samples(reader, action_duration)
+                samples = collect_samples(
+                    reader,
+                    action_duration,
+                    message=f"Now perform action: {action.name} / {action.zh_name}",
+                )
                 path = recorder.write_trial(trial_id, action.action_id, action.name, samples)
                 print(f"Saved: {path}")
                 trial_id += 1
