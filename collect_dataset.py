@@ -1,5 +1,7 @@
 import argparse
+import re
 import time
+from pathlib import Path
 
 import yaml
 
@@ -8,9 +10,61 @@ from recorder import CSVRecorder
 from serial_reader import Serial12HexReader
 
 
+REQUIRED_TOP_LEVEL_KEYS = ("runtime", "dataset")
+REQUIRED_RUNTIME_KEYS = ("source", "source_args")
+REQUIRED_SOURCE_ARGS_KEYS = ("port", "baudrate")
+
+
+def _remove_html_breaks(text: str) -> str:
+    """Remove accidental HTML line-break tags copied from chat or webpages."""
+    return re.sub(r"<br\s*/?>", "", text, flags=re.IGNORECASE)
+
+
 def load_config(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    config_path = Path(path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    raw_text = config_path.read_text(encoding="utf-8")
+    cleaned_text = _remove_html_breaks(raw_text)
+
+    try:
+        cfg = yaml.safe_load(cleaned_text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid YAML config file: {config_path}\n{exc}") from exc
+
+    if cfg is None:
+        raise ValueError(
+            f"Config file is empty or only contains comments: {config_path}. "
+            "Please check config.yaml."
+        )
+    if not isinstance(cfg, dict):
+        raise ValueError(f"Config root must be a YAML mapping/dictionary: {config_path}")
+
+    missing_top_keys = [key for key in REQUIRED_TOP_LEVEL_KEYS if key not in cfg]
+    if missing_top_keys:
+        raise ValueError(f"Missing top-level config key(s): {missing_top_keys}")
+
+    runtime_cfg = cfg.get("runtime")
+    dataset_cfg = cfg.get("dataset")
+    if not isinstance(runtime_cfg, dict):
+        raise ValueError("Config key 'runtime' must be a mapping/dictionary.")
+    if not isinstance(dataset_cfg, dict):
+        raise ValueError("Config key 'dataset' must be a mapping/dictionary.")
+
+    missing_runtime_keys = [key for key in REQUIRED_RUNTIME_KEYS if key not in runtime_cfg]
+    if missing_runtime_keys:
+        raise ValueError(f"Missing runtime config key(s): {missing_runtime_keys}")
+
+    source_args = runtime_cfg.get("source_args")
+    if not isinstance(source_args, dict):
+        raise ValueError("Config key 'runtime.source_args' must be a mapping/dictionary.")
+
+    missing_source_args = [key for key in REQUIRED_SOURCE_ARGS_KEYS if key not in source_args]
+    if missing_source_args:
+        raise ValueError(f"Missing runtime.source_args key(s): {missing_source_args}")
+
+    return cfg
 
 
 def collect_samples(reader, duration_sec):
@@ -39,8 +93,14 @@ def main():
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-    source_args = cfg["runtime"]["source_args"]
+    runtime_cfg = cfg["runtime"]
+    source_args = runtime_cfg["source_args"]
     dataset_cfg = cfg["dataset"]
+
+    if runtime_cfg.get("source") != "serial12hex":
+        raise ValueError(
+            "Only runtime.source='serial12hex' is currently supported by collect_dataset.py."
+        )
 
     trials_per_action = args.trials or int(dataset_cfg.get("trials_per_action", 20))
     baseline_duration = float(dataset_cfg.get("baseline_duration_sec", 30))
@@ -55,6 +115,8 @@ def main():
     print(f"Subject: {args.subject}")
     print(f"Trials per action: {trials_per_action}")
     print(f"Save directory: {recorder.subject_dir}")
+    print(f"Serial port: {source_args.get('port')}")
+    print(f"Baudrate: {source_args.get('baudrate')}")
 
     if args.dry_run:
         print("Dry-run mode enabled. No serial data will be recorded.")
