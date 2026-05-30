@@ -1,0 +1,53 @@
+runtime:
+  device: "cuda"
+  window_sec: 0.5
+  hop_sec: 0.1
+  fs_eeg: 250.0
+  fs_ecg: 250.0
+  eeg_channels: "auto"
+  eeg_channel_names: "auto"
+  source: "serial12hex"
+  source_args:
+    port: "/dev/ttyUSB0"
+    baudrate: 115200
+    head: 255
+    tail: 254
+    fs: 250.0
+    scale_eeg: 1.0
+    scale_ecg: 1.0
+    eeg_channels: 8
+    ecg_channels: 4
+
+preprocess:
+  eeg:
+    bandpass: [1.0, 45.0]
+    notch: "auto"
+    normalize: true
+  ecg:
+    bandpass: [0.5, 40.0]
+    normalize: true
+
+dataset:
+  name: "EEG_ECG_12Action_Dataset"
+  save_dir: "data/raw"
+  save_format: "csv"
+  subject_prefix: "sub"
+  baseline_duration_sec: 30
+  action_duration_sec: 5
+  rest_duration_sec: 3
+  trials_per_action: 20
+
+labels:
+  names:
+    - "rest"
+    - "left_hand_raise"
+    - "right_hand_raise"
+    - "both_hands_raise"
+    - "left_hand_grasp"
+    - "right_hand_grasp"
+    - "left_arm_reach"
+    - "right_arm_reach"
+    - "head_turn_left"
+    - "head_turn_right"
+    - "walk_forward"
+    - "stop"
