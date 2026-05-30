@@ -8,7 +8,8 @@ runtime:
   eeg_channel_names: "auto"
   source: "serial12hex"
   source_args:
-    port: "/dev/ttyUSB0"
+    # Jetson UART default. For USB serial devices, change this to /dev/ttyUSB0.
+    port: "/dev/ttyTHS0"
     baudrate: 115200
     head: 255
     tail: 254
