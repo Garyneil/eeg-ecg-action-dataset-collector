@@ -146,16 +146,17 @@ def main():
     rest_duration = float(dataset_cfg.get("rest_duration_sec", 3))
     save_dir = dataset_cfg.get("save_dir", "data/raw")
 
-    recorder = CSVRecorder(save_dir, args.subject)
+    recorder = CSVRecorder(save_dir, args.subject, config=cfg)
     actions = get_actions()
 
     print("EEG-ECG Multimodal Action Dataset Collector")
     print(f"Subject: {args.subject}")
+    print(f"Session ID: {recorder.session_id}")
     print(f"Trials per action: {trials_per_action}")
     print(f"Baseline duration: {baseline_duration:.1f}s")
     print(f"Action duration: {action_duration:.1f}s")
     print(f"Rest/prepare duration: {rest_duration:.1f}s")
-    print(f"Save directory: {recorder.subject_dir}")
+    print(f"Save directory: {recorder.session_dir}")
     print(f"Serial port: {source_args.get('port')}")
     print(f"Baudrate: {source_args.get('baudrate')}")
 
@@ -167,6 +168,8 @@ def main():
                 print(f"[DRY RUN] Action {action.action_id:02d}: {action.name}, trial {trial:03d}")
                 countdown(f"Prepare: {action.description}", rest_duration)
                 countdown(f"Simulated recording: {action.name}", action_duration)
+        recorder.finalize_session()
+        print(f"Dry-run session metadata saved: {recorder.session_dir}")
         return
 
     reader = Serial12HexReader(**source_args)
@@ -179,7 +182,14 @@ def main():
             baseline_duration,
             message="Baseline recording: keep relaxed and still.",
         )
-        baseline_path = recorder.write_trial(0, 0, "baseline_rest", baseline_samples)
+        baseline_path = recorder.write_trial(
+            0,
+            0,
+            "baseline_rest",
+            baseline_samples,
+            duration_sec=baseline_duration,
+            note="baseline",
+        )
         print(f"Baseline saved: {baseline_path}")
 
         trial_id = 1
@@ -196,13 +206,23 @@ def main():
                     action_duration,
                     message=f"Now perform action: {action.name} / {action.zh_name}",
                 )
-                path = recorder.write_trial(trial_id, action.action_id, action.name, samples)
+                path = recorder.write_trial(
+                    trial_id,
+                    action.action_id,
+                    action.name,
+                    samples,
+                    duration_sec=action_duration,
+                    note=f"local_trial={local_trial}",
+                )
                 print(f"Saved: {path}")
                 trial_id += 1
 
     finally:
         reader.close()
+        session_dir = recorder.finalize_session()
         print("Serial port closed.")
+        print(f"Session finalized: {session_dir}")
+        print(f"Metadata saved: {session_dir}/metadata.json and {session_dir}/metadata.csv")
 
 
 if __name__ == "__main__":
