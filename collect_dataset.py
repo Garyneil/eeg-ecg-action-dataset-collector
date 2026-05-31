@@ -126,7 +126,7 @@ def main():
     parser = argparse.ArgumentParser(description="EEG/ECG 12-action dataset collector")
     parser.add_argument("--subject", required=True, help="Subject ID, e.g., sub001")
     parser.add_argument("--config", default="config.yaml", help="Path to config.yaml")
-    parser.add_argument("--trials", type=int, default=None, help="Trials per action")
+    parser.add_argument("--trials", type=int, default=None, help="Number of 12-action rounds")
     parser.add_argument("--dry-run", action="store_true", help="Run protocol without opening serial port")
     args = parser.parse_args()
 
@@ -140,7 +140,7 @@ def main():
             "Only runtime.source='serial12hex' is currently supported by collect_dataset.py."
         )
 
-    trials_per_action = args.trials or int(dataset_cfg.get("trials_per_action", 20))
+    rounds = args.trials or int(dataset_cfg.get("trials_per_action", 20))
     baseline_duration = float(dataset_cfg.get("baseline_duration_sec", 30))
     action_duration = float(dataset_cfg.get("action_duration_sec", 5))
     rest_duration = float(dataset_cfg.get("rest_duration_sec", 3))
@@ -152,7 +152,7 @@ def main():
     print("EEG-ECG Multimodal Action Dataset Collector")
     print(f"Subject: {args.subject}")
     print(f"Session ID: {recorder.session_id}")
-    print(f"Trials per action: {trials_per_action}")
+    print(f"12-action rounds: {rounds}")
     print(f"Baseline duration: {baseline_duration:.1f}s")
     print(f"Action duration: {action_duration:.1f}s")
     print(f"Rest/prepare duration: {rest_duration:.1f}s")
@@ -162,12 +162,19 @@ def main():
 
     if args.dry_run:
         print("Dry-run mode enabled. No serial data will be recorded.")
-        for action in actions:
-            for trial in range(1, trials_per_action + 1):
-                print("=" * 60)
-                print(f"[DRY RUN] Action {action.action_id:02d}: {action.name}, trial {trial:03d}")
+        trial_id = 1
+        for round_idx in range(1, rounds + 1):
+            print("=" * 60)
+            print(f"[DRY RUN] Round {round_idx:03d}/{rounds:03d}: 12-action sequence")
+            for action in actions:
+                print("-" * 60)
+                print(
+                    f"[DRY RUN] Trial {trial_id:03d} | Round {round_idx:03d}/{rounds:03d} | "
+                    f"Action {action.action_id:02d}: {action.name} / {action.zh_name}"
+                )
                 countdown(f"Prepare: {action.description}", rest_duration)
                 countdown(f"Simulated recording: {action.name}", action_duration)
+                trial_id += 1
         recorder.finalize_session()
         print(f"Dry-run session metadata saved: {recorder.session_dir}")
         return
@@ -175,7 +182,7 @@ def main():
     reader = Serial12HexReader(**source_args)
 
     try:
-        print("Collecting baseline data...")
+        print("Collecting baseline data before formal 12-action rounds...")
         countdown("Please keep relaxed. Baseline recording will start soon.", 3)
         baseline_samples = collect_samples(
             reader,
@@ -188,17 +195,19 @@ def main():
             "baseline_rest",
             baseline_samples,
             duration_sec=baseline_duration,
-            note="baseline",
+            note="pre_session_baseline",
         )
         print(f"Baseline saved: {baseline_path}")
 
         trial_id = 1
-        for action in actions:
-            for local_trial in range(1, trials_per_action + 1):
-                print("=" * 60)
+        for round_idx in range(1, rounds + 1):
+            print("=" * 60)
+            print(f"Round {round_idx:03d}/{rounds:03d}: 12-action sequence")
+            for action in actions:
+                print("-" * 60)
                 print(
-                    f"Action {action.action_id:02d} | {action.name} | {action.zh_name} | "
-                    f"trial {local_trial}/{trials_per_action}"
+                    f"Trial {trial_id:03d} | Round {round_idx:03d}/{rounds:03d} | "
+                    f"Action {action.action_id:02d} | {action.name} | {action.zh_name}"
                 )
                 countdown(f"Prepare: {action.description}", rest_duration)
                 samples = collect_samples(
@@ -212,7 +221,7 @@ def main():
                     action.name,
                     samples,
                     duration_sec=action_duration,
-                    note=f"local_trial={local_trial}",
+                    note=f"round={round_idx}; action_in_round={action.action_id:02d}",
                 )
                 print(f"Saved: {path}")
                 trial_id += 1
