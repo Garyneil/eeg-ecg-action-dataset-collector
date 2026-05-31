@@ -16,6 +16,7 @@ Main features:
 
 - 8-channel EEG + 4-channel ECG serial acquisition
 - 12-channel hexadecimal serial stream decoding
+- lightweight realtime waveform viewer based on PyQt5 and pyqtgraph
 - 12-class action protocol
 - real-time preparation countdown
 - real-time recording countdown for each action trial
@@ -35,6 +36,7 @@ eeg-ecg-action-dataset-collector/
 ├── config.yaml            # Acquisition and protocol configuration
 ├── requirements.txt       # Python dependencies
 ├── collect_dataset.py     # Main collection script
+├── realtime_viewer.py     # Realtime EEG/ECG waveform viewer
 ├── serial_reader.py       # 12-channel serial data reader
 ├── recorder.py            # CSV recorder and session metadata manager
 ├── protocol.py            # 12-action protocol definition
@@ -57,22 +59,31 @@ git clone https://github.com/Garyneil/eeg-ecg-action-dataset-collector.git
 cd eeg-ecg-action-dataset-collector
 ```
 
+Recommended Python version:
+
+```text
+Python 3.8+
+```
+
 Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-If `pyserial` is missing, install it manually:
-
-```bash
-pip install pyserial
-```
-
-Recommended Python version:
+The realtime viewer requires:
 
 ```text
-Python 3.8+
+PyQt5
+pyqtgraph
+```
+
+If GUI installation fails on Linux or Jetson, install the Qt system package first:
+
+```bash
+sudo apt update
+sudo apt install -y python3-pyqt5
+pip install pyqtgraph
 ```
 
 ---
@@ -114,7 +125,7 @@ Default serial parameters:
 
 The main configuration file is `config.yaml`.
 
-Current default serial port:
+Current default serial configuration:
 
 ```yaml
 runtime:
@@ -131,13 +142,13 @@ runtime:
     ecg_channels: 4
 ```
 
-For Jetson UART, the default is usually:
+For Jetson UART, the default port is usually:
 
 ```yaml
 port: "/dev/ttyTHS0"
 ```
 
-For USB serial devices, change it to something like:
+For USB serial devices on Linux or Jetson, change it to something like:
 
 ```yaml
 port: "/dev/ttyUSB0"
@@ -201,28 +212,67 @@ Then the action trials start from `trial_001`.
 
 ---
 
-## 7. How to Run
+## 7. Realtime Waveform Viewer
 
-### 7.1 Dry run
+The project provides a lightweight realtime viewer for checking the incoming EEG/ECG serial data stream before formal collection.
 
-Use dry-run mode to test the experimental flow without opening the serial port:
+It can display:
+
+- 8 EEG channels
+- 4 ECG channels
+- serial connection status
+- realtime sampling rate
+- accumulated sample count
+- recent waveform window
+- optional realtime CSV saving
+
+Run the viewer:
 
 ```bash
-python collect_dataset.py --subject sub001 --config config.yaml --dry-run
+python realtime_viewer.py --config config.yaml
 ```
 
-Dry-run mode will show:
+Use a longer or shorter display window:
 
-- subject ID
-- session ID
-- save directory
-- action order
-- preparation countdown
-- simulated recording countdown
+```bash
+python realtime_viewer.py --config config.yaml --window-sec 10
+```
 
-### 7.2 Formal collection
+The viewer is mainly used for signal checking and debugging. Formal dataset collection should still use `collect_dataset.py`.
 
-Before formal collection, make sure the serial port in `config.yaml` is correct.
+```text
+realtime_viewer.py      realtime signal monitoring
+collect_dataset.py      formal dataset collection
+```
+
+---
+
+## 8. How to Run on Jetson
+
+### 8.1 Check the serial device
+
+For the current Jetson setup, the default UART port is:
+
+```text
+/dev/ttyTHS0
+```
+
+Check available UART or USB serial devices:
+
+```bash
+ls /dev/ttyTHS*
+ls /dev/ttyUSB*
+```
+
+Make sure `config.yaml` uses the correct port:
+
+```yaml
+runtime:
+  source_args:
+    port: "/dev/ttyTHS0"
+```
+
+### 8.2 Give serial permission
 
 For Jetson UART:
 
@@ -230,7 +280,41 @@ For Jetson UART:
 sudo chmod 666 /dev/ttyTHS0
 ```
 
-Then run:
+For USB serial:
+
+```bash
+sudo chmod 666 /dev/ttyUSB0
+```
+
+### 8.3 Install dependencies on Jetson
+
+```bash
+sudo apt update
+sudo apt install -y python3-pyqt5
+pip install -r requirements.txt
+```
+
+If `PyQt5` cannot be installed by `pip` on Jetson, keep the system package and only install the rest manually:
+
+```bash
+pip install numpy pyyaml pyserial scipy pyqtgraph
+```
+
+### 8.4 Run realtime viewer on Jetson
+
+```bash
+python realtime_viewer.py --config config.yaml
+```
+
+### 8.5 Run dry-run collection on Jetson
+
+Dry-run mode tests the experimental flow without opening the serial port:
+
+```bash
+python collect_dataset.py --subject sub001 --config config.yaml --dry-run
+```
+
+### 8.6 Run formal collection on Jetson
 
 ```bash
 python collect_dataset.py --subject sub001 --config config.yaml
@@ -244,7 +328,65 @@ python collect_dataset.py --subject sub001 --config config.yaml --trials 10
 
 ---
 
-## 8. Real-Time Countdown During Collection
+## 9. How to Run on Windows
+
+### 9.1 Check the COM port
+
+Open **Device Manager** and check the serial device port, for example:
+
+```text
+COM3
+COM4
+COM5
+```
+
+Then update `config.yaml`:
+
+```yaml
+runtime:
+  source_args:
+    port: "COM3"
+```
+
+### 9.2 Install dependencies on Windows
+
+```powershell
+pip install -r requirements.txt
+```
+
+If the GUI packages are missing, install them manually:
+
+```powershell
+pip install PyQt5 pyqtgraph
+```
+
+### 9.3 Run realtime viewer on Windows
+
+```powershell
+python realtime_viewer.py --config config.yaml
+```
+
+### 9.4 Run dry-run collection on Windows
+
+```powershell
+python collect_dataset.py --subject sub001 --config config.yaml --dry-run
+```
+
+### 9.5 Run formal collection on Windows
+
+```powershell
+python collect_dataset.py --subject sub001 --config config.yaml
+```
+
+Use a custom number of trials per action:
+
+```powershell
+python collect_dataset.py --subject sub001 --config config.yaml --trials 10
+```
+
+---
+
+## 10. Real-Time Countdown During Collection
 
 The collector provides countdown guidance for both preparation and recording.
 
@@ -268,7 +410,7 @@ This makes it clear when the subject should prepare, start the action, and stop.
 
 ---
 
-## 9. Data Saving Structure
+## 11. Data Saving Structure
 
 Every run creates a new independent session folder to avoid overwriting previous data.
 
@@ -300,7 +442,7 @@ session_20260530_153012
 
 ---
 
-## 10. CSV Data Format
+## 12. CSV Data Format
 
 Each trial is saved as an individual CSV file.
 
@@ -329,9 +471,15 @@ Column description:
 | `eeg_1` ~ `eeg_8` | EEG channels |
 | `ecg_1` ~ `ecg_4` | ECG channels |
 
+The realtime viewer CSV format is simpler and is used only for quick signal checking:
+
+```csv
+timestamp,EEG1,EEG2,EEG3,EEG4,EEG5,EEG6,EEG7,EEG8,ECG1,ECG2,ECG3,ECG4
+```
+
 ---
 
-## 11. Metadata Files
+## 13. Metadata Files
 
 Each session automatically generates two metadata files:
 
@@ -369,38 +517,47 @@ This is useful for:
 
 ---
 
-## 12. Recommended Collection Workflow
+## 14. Recommended Collection Workflow
 
 Recommended workflow for each subject:
 
 ```text
 1. Connect EEG/ECG device
-2. Check serial port permission
-3. Check config.yaml
-4. Run dry-run mode
-5. Confirm countdown and action order
-6. Start formal collection
-7. Check generated session folder
-8. Check metadata.csv and metadata.json
-9. Back up the session folder
+2. Check serial port and config.yaml
+3. Run realtime_viewer.py to inspect the waveform
+4. Check whether the sampling rate is stable
+5. Run dry-run mode
+6. Confirm countdown and action order
+7. Start formal collection
+8. Check generated session folder
+9. Check metadata.csv and metadata.json
+10. Back up the session folder
 ```
 
-Command example:
+Jetson example:
 
 ```bash
+sudo chmod 666 /dev/ttyTHS0
+python realtime_viewer.py --config config.yaml
+python collect_dataset.py --subject sub001 --config config.yaml --dry-run
+python collect_dataset.py --subject sub001 --config config.yaml
+```
+
+Windows example:
+
+```powershell
+python realtime_viewer.py --config config.yaml
 python collect_dataset.py --subject sub001 --config config.yaml --dry-run
 python collect_dataset.py --subject sub001 --config config.yaml
 ```
 
 ---
 
-## 13. Common Problems
+## 15. Common Problems
 
-### 13.1 `TypeError: 'NoneType' object is not subscriptable`
+### 15.1 `TypeError: 'NoneType' object is not subscriptable`
 
 This usually means `config.yaml` is empty or broken.
-
-The latest version already checks this problem and reports a clear configuration error.
 
 Make sure `config.yaml` does not contain copied HTML tags such as:
 
@@ -408,34 +565,60 @@ Make sure `config.yaml` does not contain copied HTML tags such as:
 <br/>
 ```
 
-### 13.2 Serial port permission denied
+### 15.2 Serial port permission denied on Jetson or Linux
 
-On Linux or Jetson, run:
+For Jetson UART:
 
 ```bash
 sudo chmod 666 /dev/ttyTHS0
 ```
 
-or, for USB serial:
+For USB serial:
 
 ```bash
 sudo chmod 666 /dev/ttyUSB0
 ```
 
-### 13.3 Wrong serial port
+### 15.3 Wrong serial port
 
-Check available devices:
+On Jetson or Linux, check available devices:
 
 ```bash
 ls /dev/ttyTHS*
 ls /dev/ttyUSB*
 ```
 
-Then update `config.yaml`.
+On Windows, check the port in **Device Manager** and update `config.yaml`, for example:
 
-### 13.4 Data not saved where expected
+```yaml
+port: "COM3"
+```
 
-The project now saves data inside a session folder:
+### 15.4 Realtime viewer does not open on Jetson
+
+Install the Qt system package:
+
+```bash
+sudo apt update
+sudo apt install -y python3-pyqt5
+pip install pyqtgraph
+```
+
+If you are using SSH without desktop forwarding, run the viewer directly on a Jetson desktop environment, or use a proper X11 forwarding setup.
+
+### 15.5 Realtime waveform is flat or abnormal
+
+Check:
+
+- whether the EEG/ECG device is powered on
+- whether the serial baudrate is correct
+- whether the frame head and tail bytes match the hardware protocol
+- whether electrode contact is stable
+- whether `scale_eeg` and `scale_ecg` are set properly
+
+### 15.6 Data not saved where expected
+
+Formal collection saves data inside a session folder:
 
 ```text
 data/raw/<subject_id>/<session_id>/
@@ -447,18 +630,19 @@ Example:
 data/raw/sub001/session_20260530_153012/
 ```
 
-### 13.5 Repeated collection overwrites old data
+### 15.7 Repeated collection overwrites old data
 
 This should not happen in the current version. Every formal run creates a new session folder.
 
 ---
 
-## 14. Notes for Dataset Quality
+## 16. Notes for Dataset Quality
 
 For cleaner data, follow these rules:
 
 - keep electrode contact stable before starting
 - keep the subject relaxed during baseline recording
+- check realtime waveform before formal collection
 - keep each action execution consistent across trials
 - avoid unnecessary body movement during upper-limb actions
 - record abnormal events manually if they occur
@@ -467,15 +651,15 @@ For cleaner data, follow these rules:
 
 ---
 
-## 15. Future Work
+## 17. Future Work
 
 Planned improvements:
 
-- real-time waveform visualization
 - automatic signal quality assessment
 - GUI-based experiment guidance
 - audio prompts for each action
 - support for additional modalities such as EDA, respiration, or temperature
+- optional LSL/XDF synchronization backend
 - dataset export scripts for machine learning pipelines
 
 ---
