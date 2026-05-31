@@ -72,7 +72,7 @@ def _format_remaining(seconds_left: float) -> str:
     return f"{seconds_left:02d}s"
 
 
-def countdown(message, seconds):
+def countdown(message, seconds, live_plotter=None):
     """Blocking countdown used before recording starts."""
     print(message)
     start = time.monotonic()
@@ -89,14 +89,16 @@ def countdown(message, seconds):
         if display != last_display:
             print(f"  remaining: {display}", end="\r", flush=True)
             last_display = display
+        if live_plotter is not None:
+            live_plotter.update_plots()
         time.sleep(0.05)
 
     print(" " * 40, end="\r", flush=True)
     print("  remaining: 00s")
 
 
-def collect_samples(reader, duration_sec, message="Recording"):
-    """Collect serial samples while showing a real-time countdown."""
+def collect_samples(reader, duration_sec, message="Recording", live_plotter=None):
+    """Collect serial samples while showing a real-time countdown and optional live plot."""
     samples = []
     stream = reader.samples()
     start = time.monotonic()
@@ -115,10 +117,15 @@ def collect_samples(reader, duration_sec, message="Recording"):
             print(f"  recording countdown: {display} | samples: {len(samples)}", end="\r", flush=True)
             last_display = display
 
-        samples.append(next(stream))
+        sample = next(stream)
+        samples.append(sample)
+        if live_plotter is not None:
+            live_plotter.push_sample(sample)
 
     print(" " * 70, end="\r", flush=True)
     print(f"  recording countdown: 00s | samples: {len(samples)}")
+    if live_plotter is not None:
+        live_plotter.update_plots()
     return samples
 
 
@@ -128,6 +135,8 @@ def main():
     parser.add_argument("--config", default="config.yaml", help="Path to config.yaml")
     parser.add_argument("--trials", type=int, default=None, help="Number of 12-action rounds")
     parser.add_argument("--dry-run", action="store_true", help="Run protocol without opening serial port")
+    parser.add_argument("--viewer", action="store_true", help="Show realtime EEG/ECG waveform window during formal collection")
+    parser.add_argument("--viewer-window-sec", type=float, default=5.0, help="Live viewer display window length in seconds")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -159,6 +168,7 @@ def main():
     print(f"Save directory: {recorder.session_dir}")
     print(f"Serial port: {source_args.get('port')}")
     print(f"Baudrate: {source_args.get('baudrate')}")
+    print(f"Live viewer: {'enabled' if args.viewer else 'disabled'}")
 
     if args.dry_run:
         print("Dry-run mode enabled. No serial data will be recorded.")
@@ -179,15 +189,29 @@ def main():
         print(f"Dry-run session metadata saved: {recorder.session_dir}")
         return
 
+    live_plotter = None
+    if args.viewer:
+        from live_plotter import LiveWaveformPlotter
+
+        live_plotter = LiveWaveformPlotter(
+            eeg_channels=int(source_args.get("eeg_channels", 8)),
+            ecg_channels=int(source_args.get("ecg_channels", 4)),
+            fs=float(source_args.get("fs", 250.0)),
+            window_sec=args.viewer_window_sec,
+        )
+
     reader = Serial12HexReader(**source_args)
 
     try:
         print("Collecting baseline data before formal 12-action rounds...")
-        countdown("Please keep relaxed. Baseline recording will start soon.", 3)
+        if live_plotter is not None:
+            live_plotter.set_context(None, None, "pre_session_baseline")
+        countdown("Please keep relaxed. Baseline recording will start soon.", 3, live_plotter=live_plotter)
         baseline_samples = collect_samples(
             reader,
             baseline_duration,
             message="Baseline recording: keep relaxed and still.",
+            live_plotter=live_plotter,
         )
         baseline_path = recorder.write_trial(
             0,
@@ -209,11 +233,14 @@ def main():
                     f"Trial {trial_id:03d} | Round {round_idx:03d}/{rounds:03d} | "
                     f"Action {action.action_id:02d} | {action.name} | {action.zh_name}"
                 )
-                countdown(f"Prepare: {action.description}", rest_duration)
+                if live_plotter is not None:
+                    live_plotter.set_context(trial_id, action.action_id, action.name, round_idx=round_idx)
+                countdown(f"Prepare: {action.description}", rest_duration, live_plotter=live_plotter)
                 samples = collect_samples(
                     reader,
                     action_duration,
                     message=f"Now perform action: {action.name} / {action.zh_name}",
+                    live_plotter=live_plotter,
                 )
                 path = recorder.write_trial(
                     trial_id,
@@ -228,6 +255,8 @@ def main():
 
     finally:
         reader.close()
+        if live_plotter is not None:
+            live_plotter.close()
         session_dir = recorder.finalize_session()
         print("Serial port closed.")
         print(f"Session finalized: {session_dir}")
