@@ -669,3 +669,165 @@ Planned improvements:
 Garyneil
 
 GitHub: [Garyneil](https://github.com/Garyneil)
+
+
+在Ubuntu / Jetson Nano 快速启动项目，可以直接复制粘贴以下代码
+---
+
+# Ubuntu / Jetson Nano Quick Start
+
+This section describes how to deploy and run the project on Ubuntu or NVIDIA Jetson Nano.
+
+本节介绍如何在 Ubuntu 或 NVIDIA Jetson Nano 上部署并运行本项目。
+
+---
+
+## Clone the repository | 克隆仓库
+
+```bash
+git clone https://github.com/Garyneil/eeg-ecg-action-dataset-collector.git
+cd eeg-ecg-action-dataset-collector
+```
+
+## Create a virtual environment | 创建虚拟环境
+
+```bash
+python3 -m venv venv
+```
+
+## Activate the virtual environment | 激活虚拟环境
+
+```bash
+source venv/bin/activate
+```
+
+## Install dependencies | 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+If downloading packages is slow, use the Tsinghua mirror.
+
+若下载依赖较慢，可使用清华镜像源。
+
+```bash
+pip install -r requirements.txt \
+-i https://pypi.tuna.tsinghua.edu.cn/simple \
+--timeout 100
+```
+
+## Configure UART | 配置串口
+
+Verify that the serial configuration in `config.yaml` is correct.
+
+确认 `config.yaml` 中串口配置如下：
+
+```yaml
+port: "/dev/ttyTHS0"
+baudrate: 115200
+head: 255
+tail: 254
+eeg_channels: 8
+ecg_channels: 4
+```
+
+## Start data collection | 开始采集
+
+```bash
+python3 collect_dataset.py \
+--subject sub001 \
+--config config.yaml
+```
+
+## Start with the real-time viewer | 开启实时波形显示
+
+```bash
+python3 collect_dataset.py \
+--subject sub001 \
+--config config.yaml \
+--viewer
+```
+
+## Change the viewer window length | 修改波形窗口长度
+
+```bash
+python3 collect_dataset.py \
+--subject sub001 \
+--config config.yaml \
+--viewer \
+--viewer-window-sec 10
+```
+
+## Exit the virtual environment | 退出虚拟环境
+
+```bash
+deactivate
+```
+
+## Verify the serial device | 查看串口设备
+
+```bash
+ls /dev/ttyTHS0
+```
+
+## Test UART communication | 测试串口通信
+
+```bash
+minicom -D /dev/ttyTHS0 -b 115200
+```
+
+If garbled characters are displayed, the acquisition board is transmitting binary hexadecimal data correctly.
+
+若终端显示乱码，说明采集板正在正常发送二进制十六进制数据。
+
+---
+
+## Install the viewer dependencies (Ubuntu) | 安装实时波形显示依赖（Ubuntu）
+
+```bash
+sudo apt update
+sudo apt install python3-pyqt5 python3-pyqtgraph
+```
+
+## Troubleshooting | 常见问题
+
+### samples = 0
+
+Check:
+
+- UART device (`/dev/ttyTHS0`)
+- Baudrate (`115200`)
+- Frame Header (`255`)
+- Frame Tail (`254`)
+- Hardware connection
+
+请检查：
+
+- 串口设备
+- 波特率
+- 帧头
+- 帧尾
+- 硬件连接
+
+
+### Viewer is disabled
+
+Start the collector with:
+
+```bash
+python3 collect_dataset.py \
+--subject sub001 \
+--config config.yaml \
+--viewer
+```
+
+### PyQt5 installation failed
+
+Install PyQt5 using the Ubuntu package manager instead of pip.
+
+请使用 Ubuntu 软件源安装，而不是 pip：
+
+```bash
+sudo apt install python3-pyqt5 python3-pyqtgraph
+```
